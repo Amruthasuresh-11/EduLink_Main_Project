@@ -63,6 +63,8 @@ class _SignupScreenState extends State<SignupScreen> {
 
       // extra for your project
       "isVerified": false, // admin can verify later
+      "isBlocked": false,
+
     });
 
     // ✅ Step 5: Success message
