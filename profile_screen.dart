@@ -12,10 +12,8 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // ✅ Theme color
   static const Color themeBlue = Color(0xFF4A00E0);
 
-  // ✅ User details (Firestore)
   String name = "";
   String university = "";
   String college = "";
@@ -24,47 +22,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String skills = "";
 
   bool isLoading = true;
+  String myUid = "";
 
-  // ✅ Fetch user data safely from Firestore
   Future<void> fetchUserData() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-      // ✅ if no user logged in
-      if (user == null) {
-        if (!mounted) return;
-        setState(() => isLoading = false);
-        return;
-      }
+    myUid = user.uid;
 
-      final uid = user.uid;
+    final doc =
+        await FirebaseFirestore.instance.collection("users").doc(myUid).get();
+        if(!mounted) return;
 
-      // ✅ fetch document
-      final doc =
-          await FirebaseFirestore.instance.collection("users").doc(uid).get();
-
-      if (!mounted) return; // ✅ prevents setState after dispose
-
-      if (doc.exists) {
-        setState(() {
-          name = (doc.data()?["name"] ?? "").toString();
-          university = (doc.data()?["university"] ?? "").toString();
-          college = (doc.data()?["college"] ?? "").toString();
-          course = (doc.data()?["course"] ?? "").toString();
-          year = (doc.data()?["year"] ?? "").toString();
-          skills = (doc.data()?["skills"] ?? "").toString();
-          isLoading = false;
-        });
-      } else {
-        setState(() => isLoading = false);
-      }
-    } catch (e) {
-      if (!mounted) return;
+    if (doc.exists) {
+      final data = doc.data()!;
+      setState(() {
+        name = data["name"] ?? "";
+        university = data["university"] ?? "";
+        college = data["college"] ?? "";
+        course = data["course"] ?? "";
+        year = data["year"] ?? "";
+        skills = data["skills"] ?? "";
+        isLoading = false;
+      });
+    } else {
       setState(() => isLoading = false);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error loading profile: $e")),
-      );
     }
   }
 
@@ -74,26 +56,41 @@ class _ProfileScreenState extends State<ProfileScreen> {
     fetchUserData();
   }
 
-  // ✅ Logout function
   Future<void> logout() async {
     await FirebaseAuth.instance.signOut();
-    if (!mounted) return;
     Navigator.pushNamedAndRemoveUntil(context, '/login', (route) => false);
   }
 
-  // ✅ Helper: show default value if empty
-  String showValue(String value) {
-    return value.trim().isEmpty ? "Not added yet" : value;
+  String showValue(String value) =>
+      value.trim().isEmpty ? "Not added yet" : value;
+  //Badge Logic
+  String getBadge(double rating) {
+  if (rating >= 4.5) return "🥇";
+  if (rating >= 3.5) return "🥈";
+  if (rating >= 2.5) return "🥉";
+  return "";
   }
+  //Average Rating
+  Future<double> getAverageRating() async {
+  final snapshot = await FirebaseFirestore.instance
+      .collection("users")
+      .doc(myUid)
+      .collection("ratings")
+      .get();
+
+  if (snapshot.docs.isEmpty) return 0;
+
+  double total = 0;
+
+  for (var doc in snapshot.docs) {
+    total += (doc["rating"] ?? 0);
+  }
+
+  return total / snapshot.docs.length;
+}
 
   @override
   Widget build(BuildContext context) {
-    const TextStyle detailStyle = TextStyle(
-      fontSize: 14,
-      color: Colors.black87,
-      height: 1.5,
-    );
-
     return Scaffold(
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -103,32 +100,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 10),
-
-                    // ✅ Top Profile Row
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // ✅ Profile image left
-                        CircleAvatar(
+                        const CircleAvatar(
                           radius: 38,
-                          backgroundColor: Colors.grey.shade300,
-                          child: const Icon(Icons.person,
-                              size: 45, color: Colors.white),
+                          child: Icon(Icons.person, size: 40),
                         ),
-
                         const SizedBox(width: 14),
-
-                        // ✅ Details + icons on right
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // ✅ Icons row at top right
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
-                                  // ✅ Edit profile button
                                   IconButton(
                                     icon: const Icon(Icons.edit,
                                         color: themeBlue),
@@ -136,47 +121,37 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       final result = await Navigator.push(
                                         context,
                                         MaterialPageRoute(
-                                          builder: (context) =>
+                                          builder: (_) =>
                                               const EditProfileScreen(),
                                         ),
                                       );
 
-                                      // ✅ Refresh profile after edit
                                       if (result == true) {
-                                        if (!mounted) return;
                                         setState(() => isLoading = true);
                                         fetchUserData();
                                       }
                                     },
                                   ),
-
-                                  // ✅ Add post (future)
                                   IconButton(
                                     icon: const Icon(Icons.add_box_outlined,
                                         color: themeBlue),
                                     onPressed: () {
-                                      ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                            content:
-                                                Text("Add Post coming soon ✅")),
+                                      showDialog(
+                                        context: context,
+                                        builder: (_) => AddPostDialog(),
                                       );
                                     },
                                   ),
-
-                                  // ✅ Upload notes (future)
                                   IconButton(
-                                    icon: const Icon(Icons.upload_file,
-                                        color: themeBlue),
-                                    onPressed: () {
+                                     icon: const Icon(Icons.upload_file,
+                                     color: themeBlue,),
+                                    onPressed: (){
                                       ScaffoldMessenger.of(context).showSnackBar(
-                                        const SnackBar(
-                                            content: Text(
-                                                "Upload Notes coming soon ✅")),
+                                        const SnackBar(content: 
+                                        Text("Upload notes coming soon")),
                                       );
                                     },
-                                  ),
-
-                                  // ✅ Logout
+                                    ),
                                   IconButton(
                                     icon: const Icon(Icons.logout,
                                         color: Colors.red),
@@ -184,26 +159,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                   ),
                                 ],
                               ),
+                              
+                              FutureBuilder<double>(
+                                future: getAverageRating(),
+                                builder: (context, snapshot) {
 
-                              // ✅ Name & details from Firestore
-                              Text(
-                                name.isEmpty ? "Student" : name,
-                                style: const TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold),
+                                  final rating = snapshot.data ?? 0;
+                                  final badge = getBadge(rating);
+
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+
+                                      Row(
+                                        children: [
+                                          Text(
+                                            name,
+                                            style: const TextStyle(
+                                              fontSize: 18,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+
+                                          if (badge.isNotEmpty) ...[
+                                            const SizedBox(width: 6),
+                                            Text(
+                                              badge,
+                                              style: const TextStyle(fontSize: 22),
+                                            ),
+                                          ]
+                                        ],
+                                      ),
+
+                                      if (rating > 0)
+                                        Text(
+                                          "⭐ ${rating.toStringAsFixed(1)} Rating",
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            color: Colors.black,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                    ],
+                                  );
+                                },
                               ),
-                              const SizedBox(height: 6),
-
-                              Text("University : ${showValue(university)}",
-                                  style: detailStyle),
-                              Text("College : ${showValue(college)}",
-                                  style: detailStyle),
-                              Text("Course : ${showValue(course)}",
-                                  style: detailStyle),
-                              Text("Year : ${showValue(year)}",
-                                  style: detailStyle),
-                              Text("Skills : ${showValue(skills)}",
-                                  style: detailStyle),
+                              Text("University : ${showValue(university)}"),
+                              Text("College : ${showValue(college)}"),
+                              Text("Course : ${showValue(course)}"),
+                              Text("Year : ${showValue(year)}"),
+                              Text("Skills : ${showValue(skills)}"),
                             ],
                           ),
                         ),
@@ -212,89 +217,168 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                     const SizedBox(height: 18),
 
-                    // ✅ Notes + Message buttons
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: themeBlue,
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(backgroundColor: themeBlue),
+                                    onPressed: () {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text("Notes coming soon")),
+                                      );
+                                    },
+                                    child: const Text("Notes",style: TextStyle(color: Colors.white),),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: ElevatedButton(
+                                    style: ElevatedButton.styleFrom(backgroundColor: themeBlue),
+                                    onPressed: () {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(content: Text("Messages coming soon")),
+                                      );
+                                    },
+                                    child: const Text("Message",style: TextStyle(color: Colors.white),),
+                                  ),
+                                ),
+                              ],
                             ),
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content: Text("Notes page coming soon ✅")),
-                              );
-                            },
-                            child: const Text(
-                              "Notes",
-                              style: TextStyle(
-                                  color: Colors.white, fontSize: 15),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: themeBlue,
-                              padding:
-                                  const EdgeInsets.symmetric(vertical: 14),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                            onPressed: () {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                    content:
-                                        Text("Messages page coming soon ✅")),
-                              );
-                            },
-                            child: const Text(
-                              "Message",
-                              style: TextStyle(
-                                  color: Colors.white, fontSize: 15),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
 
-                    const SizedBox(height: 22),
 
-                    // ✅ Posts title
-                    const Text(
-                      "Posts",
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-
+                    const SizedBox(height: 20),
+                    const Text("Posts",
+                        style:
+                            TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 10),
 
-                    // ✅ Post area box
-                    Container(
-                      height: 260,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      alignment: Alignment.center,
-                      child: const Text(
-                        "No posts yet",
-                        style: TextStyle(fontSize: 15, color: Colors.grey),
-                      ),
-                    ),
+                    // ✅ MY POSTS
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection("posts")
+                          .where("uid", isEqualTo: myUid)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (!snapshot.hasData) {
+                          return const Center(
+                              child: CircularProgressIndicator());
+                        }
+
+                        final posts = snapshot.data!.docs;
+
+                        if (posts.isEmpty) {
+                          return const Center(child: Text("No posts yet"));
+                        }
+
+                        return Column(
+                          children: posts.map((doc) {
+                            final post = doc.data() as Map<String, dynamic>;
+
+                            return Container(
+                              margin: const EdgeInsets.only(bottom: 10),
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade200,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(post["title"] ?? "",
+                                          style: const TextStyle(
+                                              fontWeight: FontWeight.bold)),
+                                      IconButton(
+                                        icon: const Icon(Icons.delete,
+                                            color: Colors.red),
+                                        onPressed: () async {
+                                          await FirebaseFirestore.instance
+                                              .collection("posts")
+                                              .doc(doc.id)
+                                              .delete();
+                                        },
+                                      )
+                                    ],
+                                  ),
+                                  Text(post["desc"] ?? ""),
+                                ],
+                              ),
+                            );
+                          }).toList(),
+                        );
+                      },
+                    )
                   ],
                 ),
               ),
             ),
+    );
+  }
+}
+
+// ================= ADD POST DIALOG =================
+
+class AddPostDialog extends StatefulWidget {
+  @override
+  State<AddPostDialog> createState() => _AddPostDialogState();
+}
+
+class _AddPostDialogState extends State<AddPostDialog> {
+  final titleController = TextEditingController();
+  final descController = TextEditingController();
+
+  Future<void> savePost() async {
+  if (titleController.text.trim().isEmpty ||
+      descController.text.trim().isEmpty) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Please fill all fields")),
+    );
+    return;
+  }
+
+  final user = FirebaseAuth.instance.currentUser;
+  if (user == null) return;
+
+  final userDoc =
+      await FirebaseFirestore.instance.collection("users").doc(user.uid).get();
+
+  await FirebaseFirestore.instance.collection("posts").add({
+    "uid": user.uid,
+    "name": userDoc["name"],
+    "college": userDoc["college"],
+    "title": titleController.text.trim(),
+    "desc": descController.text.trim(),
+    "createdAt": FieldValue.serverTimestamp(),
+  });
+
+  Navigator.pop(context);
+}
+
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text("Create Post"),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+              controller: titleController,
+              decoration: const InputDecoration(labelText: "Title")),
+          TextField(
+              controller: descController,
+              decoration: const InputDecoration(labelText: "Description")),
+        ],
+      ),
+      actions: [
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel")),
+        ElevatedButton(onPressed: savePost, child: const Text("Post")),
+      ],
     );
   }
 }
