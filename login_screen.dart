@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -25,47 +27,76 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // ✅ Firebase Login function
   Future<void> login() async {
-    // ✅ Step 1: validate form
-    if (!_formKey.currentState!.validate()) return;
+  if (!_formKey.currentState!.validate()) return;
 
-    String email = emailController.text.trim();
-    String password = passwordController.text.trim();
+  String email = emailController.text.trim();
+  String password = passwordController.text.trim();
 
-    try {
-      // ✅ Firebase Authentication login
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+  try {
+    /// ✅ Step 1: Login from Firebase Auth
+    final credential = await FirebaseAuth.instance
+        .signInWithEmailAndPassword(
+      email: email,
+      password: password,
+    );
 
-      // ✅ Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Login Successful ✅")),
-      );
+    final uid = credential.user!.uid;
 
-      // ✅ Navigate to home page
-      Navigator.pushReplacementNamed(context, '/home');
-    } on FirebaseAuthException catch (e) {
-      String msg = "Login failed ❌";
+    /// ✅ Step 2: Check Firestore -> isBlocked
+    final userDoc = await FirebaseFirestore.instance
+        .collection("users")
+        .doc(uid)
+        .get();
 
-      // ✅ common firebase auth errors
-      if (e.code == "user-not-found") {
-        msg = "No account found for this email ❌";
-      } else if (e.code == "wrong-password") {
-        msg = "Incorrect password ❌";
-      } else if (e.code == "invalid-email") {
-        msg = "Invalid email address ❌";
-      }
+    final isBlocked = userDoc.data()?["isBlocked"] ?? false;
+
+    /// 🚫 BLOCKED USER
+    if (isBlocked == true) {
+      await FirebaseAuth.instance.signOut();
 
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg)),
+        const SnackBar(
+          content: Text("Your account has been blocked by Admin 🚫"),
+        ),
       );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e")),
-      );
+
+      return;
     }
+
+    /// ✅ NORMAL LOGIN
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Login Successful ✅")),
+    );
+
+    /// ✅ ADMIN CHECK
+    if (email == "admin@gmail.com") {
+     Navigator.pushReplacementNamed(context, '/admin');
+     } else {
+      Navigator.pushReplacementNamed(context, '/home');
+    }
+
+
+  } on FirebaseAuthException catch (e) {
+    String msg = "Login failed ❌";
+
+    if (e.code == "user-not-found") {
+      msg = "No account found for this email ❌";
+    } else if (e.code == "wrong-password") {
+      msg = "Incorrect password ❌";
+    } else if (e.code == "invalid-email") {
+      msg = "Invalid email address ❌";
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg)),
+    );
+
+  } catch (e) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("Error: $e")),
+    );
   }
+}
 
   @override
   Widget build(BuildContext context) {
