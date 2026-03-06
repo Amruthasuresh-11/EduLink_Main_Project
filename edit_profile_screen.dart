@@ -12,18 +12,27 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   static const Color themeBlue = Color(0xFF4A00E0);
 
-  // ✅ Controllers
-  final TextEditingController universityController = TextEditingController();
   final TextEditingController collegeController = TextEditingController();
-  final TextEditingController courseController = TextEditingController();
   final TextEditingController skillsController = TextEditingController();
 
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
 
   bool isLoading = true;
-  bool isSaving = false;
 
-  // ✅ Allowed values for dropdown
+  final List<String> universityList = const [
+    "Mahatma Gandhi University",
+    "Calicut University",
+    "Kerala University",
+    "KTU University"
+  ];
+
+  final List<String> courseList = const [
+    "BCA",
+    "MCA",
+    "BSc Computer Science",
+    "MSc Computer Science",
+  ];
+
   final List<String> yearList = const [
     "1st Year",
     "2nd Year",
@@ -32,8 +41,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     "Passout",
   ];
 
-  // ✅ Default dropdown selection
-  String selectedYearStatus = "1st Year";
+  String selectedUniversity = "Mahatma Gandhi University";
+  String selectedCourse = "BCA";
+  String selectedYear = "1st Year";
 
   @override
   void initState() {
@@ -41,172 +51,81 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     loadExistingData();
   }
 
-  // ✅ Normalize function (important for mentor matching)
-  String normalize(String value) {
-    return value.trim().toLowerCase().replaceAll(RegExp(r"\s+"), " ");
-  }
-
-  // ✅ Load existing profile data
   Future<void> loadExistingData() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        setState(() => isLoading = false);
-        return;
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+
+    final doc =
+        await FirebaseFirestore.instance.collection("users").doc(user.uid).get();
+
+    if (doc.exists) {
+      final data = doc.data();
+
+      collegeController.text = data?["college"] ?? "";
+      skillsController.text = data?["skills"] ?? "";
+
+      if (universityList.contains(data?["university"])) {
+        selectedUniversity = data?["university"];
       }
 
-      final uid = user.uid;
-
-      final doc =
-          await FirebaseFirestore.instance.collection("users").doc(uid).get();
-
-      if (doc.exists) {
-        final data = doc.data();
-
-        universityController.text = (data?["university"] ?? "").toString();
-        collegeController.text = (data?["college"] ?? "").toString();
-        courseController.text = (data?["course"] ?? "").toString();
-        skillsController.text = (data?["skills"] ?? "").toString();
-
-        String savedYear = (data?["year"] ?? "").toString();
-
-        // ✅ ensure dropdown always has valid value
-        if (yearList.contains(savedYear)) {
-          selectedYearStatus = savedYear;
-        } else {
-          selectedYearStatus = "1st Year";
-        }
+      if (courseList.contains(data?["course"])) {
+        selectedCourse = data?["course"];
       }
 
-      if (!mounted) return;
-      setState(() => isLoading = false);
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() => isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Failed to load data: $e")),
-      );
+      if (yearList.contains(data?["year"])) {
+        selectedYear = data?["year"];
+      }
     }
+
+    setState(() => isLoading = false);
   }
 
-  // ✅ Save profile (with normalized keys)
   Future<void> saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => isSaving = true);
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
 
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) return;
+    await FirebaseFirestore.instance.collection("users").doc(user.uid).update({
+      "university": selectedUniversity,
+      "course": selectedCourse,
+      "college": collegeController.text.trim(),
+      "skills": skillsController.text.trim(),
+      "year": selectedYear,
+    });
 
-      final uid = user.uid;
-
-      final university = universityController.text.trim();
-      final college = collegeController.text.trim();
-      final course = courseController.text.trim();
-      final skills = skillsController.text.trim();
-
-      // ✅ extra fields for mentor matching
-      final universityKey = normalize(university);
-      final courseKey = normalize(course);
-
-      await FirebaseFirestore.instance.collection("users").doc(uid).update({
-        "university": university,
-        "college": college,
-        "course": course,
-        "skills": skills,
-        "year": selectedYearStatus,
-
-        // ✅ IMPORTANT (for mentor suggestion matching)
-        "universityKey": universityKey,
-        "courseKey": courseKey,
-      });
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Profile updated successfully ✅")),
-      );
-
-      Navigator.pop(context, true);
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Update failed: $e")),
-      );
-    }
-
-    if (!mounted) return;
-    setState(() => isSaving = false);
+    Navigator.pop(context, true);
   }
 
-  @override
-  void dispose() {
-    universityController.dispose();
-    collegeController.dispose();
-    courseController.dispose();
-    skillsController.dispose();
-    super.dispose();
-  }
-
-  // ✅ Input field widget
-  Widget buildField({
-    required String label,
-    required TextEditingController controller,
-    required IconData icon,
-  }) {
+  Widget dropdown(String label, IconData icon, String value, List<String> list,
+      Function(String?) onChanged) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
-      child: TextFormField(
-        controller: controller,
-        validator: (value) {
-          if (value == null || value.trim().isEmpty) {
-            return "$label is required";
-          }
-          return null;
-        },
+      child: DropdownButtonFormField(
+        value: value,
         decoration: InputDecoration(
           labelText: label,
           prefixIcon: Icon(icon, color: themeBlue),
-          filled: true,
-          fillColor: Colors.grey.shade100,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
+        items:
+            list.map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+        onChanged: onChanged,
       ),
     );
   }
 
-  // ✅ Dropdown widget
-  Widget buildYearDropdown() {
+  Widget field(String label, TextEditingController c, IconData icon) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),
-      child: DropdownButtonFormField<String>(
-        value: selectedYearStatus,
+      child: TextFormField(
+        controller: c,
+        validator: (v) => v!.isEmpty ? "$label required" : null,
         decoration: InputDecoration(
-          labelText: "Year",
-          prefixIcon:
-              const Icon(Icons.calendar_month_outlined, color: themeBlue),
-          filled: true,
-          fillColor: Colors.grey.shade100,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+          labelText: label,
+          prefixIcon: Icon(icon, color: themeBlue),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
         ),
-        items: yearList.map((year) {
-          return DropdownMenuItem(
-            value: year,
-            child: Text(year),
-          );
-        }).toList(),
-        onChanged: (value) {
-          setState(() {
-            selectedYearStatus = value!;
-          });
-        },
       ),
     );
   }
@@ -218,69 +137,43 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         backgroundColor: themeBlue,
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text("Edit Profile", style: TextStyle(color: Colors.white)),
-        centerTitle: true,
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : Padding(
               padding: const EdgeInsets.all(16),
-              child: SingleChildScrollView(
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    children: [
-                      buildField(
-                        label: "University",
-                        controller: universityController,
-                        icon: Icons.school_outlined,
-                      ),
-                      buildField(
-                        label: "College",
-                        controller: collegeController,
-                        icon: Icons.apartment_outlined,
-                      ),
-                      buildField(
-                        label: "Course",
-                        controller: courseController,
-                        icon: Icons.book_outlined,
-                      ),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  children: [
+                    dropdown("University", Icons.school, selectedUniversity,
+                        universityList,
+                        (v) => setState(() => selectedUniversity = v!)),
 
-                      // ✅ Year dropdown
-                      buildYearDropdown(),
+                    dropdown("Course", Icons.book, selectedCourse, courseList,
+                        (v) => setState(() => selectedCourse = v!)),
 
-                      buildField(
-                        label: "Skills",
-                        controller: skillsController,
-                        icon: Icons.lightbulb_outline,
-                      ),
+                    field("College", collegeController, Icons.apartment),
 
-                      const SizedBox(height: 20),
+                    dropdown("Year", Icons.calendar_month, selectedYear, yearList,
+                        (v) => setState(() => selectedYear = v!)),
 
-                      // ✅ Save button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 50,
-                        child: ElevatedButton(
-                          onPressed: isSaving ? null : saveProfile,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: themeBlue,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: isSaving
-                              ? const CircularProgressIndicator(
-                                  color: Colors.white,
-                                )
-                              : const Text(
-                                  "Save Changes",
-                                  style: TextStyle(
-                                      fontSize: 16, color: Colors.white),
-                                ),
+                    field("Skills", skillsController, Icons.lightbulb_outline),
+
+                    const SizedBox(height: 20),
+
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: saveProfile,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: themeBlue,
                         ),
+                        child: const Text("Save Changes",
+                            style: TextStyle(color: Colors.white)),
                       ),
-                    ],
-                  ),
+                    )
+                  ],
                 ),
               ),
             ),
